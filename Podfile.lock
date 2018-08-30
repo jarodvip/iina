@@ -19,7 +19,7 @@ DEPENDENCIES:
   - Sparkle
 
 SPEC REPOS:
-  https://github.com/cocoapods/specs.git:
+  https://github.com/CocoaPods/Specs.git:
     - GzipSwift
     - PromiseKit
     - Sparkle
@@ -48,4 +48,4 @@ SPEC CHECKSUMS:
 
 PODFILE CHECKSUM: 960ae6eb563282d105a3f7a401cb7a434ddc611e
 
-COCOAPODS: 1.5.3
+COCOAPODS: 1.5.0
