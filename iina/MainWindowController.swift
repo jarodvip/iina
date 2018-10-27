@@ -1339,7 +1339,7 @@ class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     standardWindowButtons.forEach { $0.alphaValue = 0 }
     titleTextField?.alphaValue = 0
-    
+
     setWindowFloatingOnTop(false)
 
     thumbnailPeekView.isHidden = true
@@ -2813,6 +2813,7 @@ extension MainWindowController: PIPViewControllerDelegate {
     pipOverlayView.isHidden = false
 
     videoView.videoLayer.draw(forced: true)
+    player.switchToMiniPlayer(automatically: true, triggeredByPIP: true)
   }
 
   func exitPIP() {
@@ -2852,6 +2853,8 @@ extension MainWindowController: PIPViewControllerDelegate {
 
   func pipDidClose(_ pip: PIPViewController) {
     doneExitingPIP()
+    player.switchBackFromMiniPlayer(automatically: true, triggeredByPIP: true)
+    player.miniPlayer.close()
   }
 
   func pipActionPlay(_ pip: PIPViewController) {

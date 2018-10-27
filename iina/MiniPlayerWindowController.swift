@@ -76,6 +76,8 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   @IBOutlet weak var muteButton: NSButton!
   @IBOutlet weak var volumeButton: NSButton!
   @IBOutlet var volumePopover: NSPopover!
+  @IBOutlet weak var albumArtButton: NSButton!
+
   @IBOutlet weak var backgroundView: NSVisualEffectView!
   @IBOutlet weak var closeButtonView: NSView!
   @IBOutlet weak var closeButtonBackgroundViewVE: NSVisualEffectView!
@@ -104,6 +106,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   var isOntop = false
   var isPlaylistVisible = false
   var isVideoVisible = true
+  var closedManually = false
 
   var videoViewAspectConstraint: NSLayoutConstraint?
 
@@ -113,7 +116,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     self.player = player
     super.init(window: nil)
   }
-  
+
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
@@ -145,7 +148,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     }
 
     setToInitialWindowSize(display: false, animate: false)
-    
+
     controlViewTopConstraint.isActive = false
 
     // set material
@@ -168,8 +171,6 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
     defaultAlbumArt.layer?.contents = #imageLiteral(resourceName: "default-album-art")
 
     // close button
-    closeButtonVE.action = #selector(self.close)
-    closeButtonBox.action = #selector(self.close)
     closeButtonView.alphaValue = 0
     closeButtonBackgroundViewVE.maskImage = .maskImage(cornerRadius: 10)
     closeButtonBackgroundViewBox.isHidden = true
@@ -205,10 +206,16 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   }
 
   func windowWillClose(_ notification: Notification) {
-    player.switchedToMiniPlayerManually = false
-    player.switchedBackFromMiniPlayerManually = false
-    player.switchBackFromMiniPlayer(automatically: true, showMainWindow: false)
-    player.mainWindow.close()
+    if closedManually {
+      player.switchedToMiniPlayerManually = false
+      player.switchedBackFromMiniPlayerManually = false
+      if #available(OSX 10.12, *), player.switchedToMiniPlayerByPIP {
+        player.switchBackFromMiniPlayer(automatically: true, showMainWindow: false, triggeredByPIP: true)
+      } else {
+        player.switchBackFromMiniPlayer(automatically: true, showMainWindow: false)
+      }
+      player.mainWindow.close()
+    }
   }
 
   func windowWillStartLiveResize(_ notification: Notification) {
@@ -421,6 +428,11 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
 
   // MARK: - IBAction
 
+  @IBAction func closeBtnAction(_ sender: Any) {
+    closedManually = true
+    close()
+  }
+
   @IBAction func togglePlaylist(_ sender: Any) {
     guard let window = window else { return }
     if isPlaylistVisible {
@@ -465,7 +477,14 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
   }
 
   @IBAction func backBtnAction(_ sender: NSButton) {
-    player.switchBackFromMiniPlayer(automatically: false)
+    if player.switchedToMiniPlayerByPIP {
+      if #available(OSX 10.12, *) {
+        player.mainWindow.exitPIP()
+      }
+    } else {
+      window?.orderOut(self)
+      player.switchBackFromMiniPlayer(automatically: false)
+    }
   }
 
   @IBAction func playBtnAction(_ sender: NSButton) {
@@ -512,7 +531,7 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
       window.level = .normal
     }
   }
-  
+
   private func normalWindowHeight() -> CGFloat {
     return 72 + (isVideoVisible ? videoWrapperView.frame.height : 0)
   }

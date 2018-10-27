@@ -99,8 +99,8 @@ class PlayerCore: NSObject {
    Each task holds a copy of ticket value at creation, so that a previous task will perceive and
    quit early if new tasks is awaiting.
 
-   **See also**: 
-   
+   **See also**:
+
    `autoLoadFilesInCurrentFolder(ticket:)`
    */
   var backgroundQueueTicket = 0
@@ -126,6 +126,7 @@ class PlayerCore: NSObject {
   var isMpvTerminated: Bool = false
 
   var isInMiniPlayer = false
+  var switchedToMiniPlayerByPIP = false
   var switchedToMiniPlayerManually = false
   var switchedBackFromMiniPlayerManually = false
 
@@ -167,7 +168,7 @@ class PlayerCore: NSObject {
   /**
    Open a list of urls. If there are more than one urls, add the remaining ones to
    playlist and disable auto loading.
-   
+
    - Returns: `nil` if no futher action is needed, like opened a BD Folder; otherwise the
    count of playable files.
    */
@@ -175,7 +176,7 @@ class PlayerCore: NSObject {
   func openURLs(_ urls: [URL], shouldAutoLoad autoLoad: Bool = true) -> Int? {
     guard !urls.isEmpty else { return 0 }
     var urls = Utility.resolveURLs(urls)
-    
+
     // handle BD folders and m3u / m3u8 files first
     if urls.count == 1 && (isBDFolder(urls[0]) ||
       Utility.playlistFileExt.contains(urls[0].absoluteString.lowercasedPathExtension)) {
@@ -183,10 +184,10 @@ class PlayerCore: NSObject {
       open(urls[0])
       return nil
     }
-    
+
     let playableFiles = getPlayableFiles(in: urls)
     let count = playableFiles.count
-    
+
     // check playable files count
     if count == 0 {
       return 0
@@ -197,14 +198,14 @@ class PlayerCore: NSObject {
     } else {
       info.shouldAutoLoadFiles = (count == 1)
     }
-    
+
     // open the first file
     open(playableFiles[0])
     // add the remaining to playlist
     playableFiles[1..<count].forEach { url in
       addToPlaylist(url.isFileURL ? url.path : url.absoluteString)
     }
-    
+
     // refresh playlist
     postNotification(.iinaPlaylistChanged)
     // send OSD
@@ -334,15 +335,20 @@ class PlayerCore: NSObject {
     self.syncPlayTimeTimer?.invalidate()
   }
 
-  func switchToMiniPlayer(automatically: Bool = false) {
-    Logger.log("Switch to mini player, automatically=\(automatically)", subsystem: subsystem)
+  func switchToMiniPlayer(automatically: Bool = false, triggeredByPIP: Bool = false) {
+    Logger.log("Switch to mini player, automatically=\(automatically), pip=\(triggeredByPIP)", subsystem: subsystem)
+    guard !isInMiniPlayer else { return }
     if !automatically {
       switchedToMiniPlayerManually = true
     }
     switchedBackFromMiniPlayerManually = false
 
     let needRestoreLayout = !miniPlayer.isWindowLoaded
+    miniPlayer.closedManually = false
     miniPlayer.showWindow(self)
+
+    switchedToMiniPlayerByPIP = triggeredByPIP
+    miniPlayer.albumArtButton.isHidden = triggeredByPIP
 
     miniPlayer.updateTrack()
     let playlistView = mainWindow.playlistView.view
@@ -359,26 +365,30 @@ class PlayerCore: NSObject {
     mainWindow.playlistView.useCompactTabHeight = true
     miniPlayer.playlistWrapperView.addSubview(playlistView)
     Utility.quickConstraints(["H:|[v]|", "V:|[v]|"], ["v": playlistView])
-    // move video view
-    videoView.removeFromSuperview()
-    miniPlayer.videoWrapperView.addSubview(videoView, positioned: .below, relativeTo: nil)
-    Utility.quickConstraints(["H:|[v]|", "V:|[v]|"], ["v": videoView])
-    let (dw, dh) = videoSizeForDisplay
-    miniPlayer.updateVideoViewAspectConstraint(withAspect: CGFloat(dw) / CGFloat(dh))
 
-    // if no video track (or video info is still not available now), set aspect ratio for main window
-    if let mw = mainWindow.window, mw.aspectRatio == .zero {
-      let size = NSSize(width: dw, height: dh)
-      mw.setFrame(NSRect(origin: mw.frame.origin, size: size), display: false)
-      mw.aspectRatio = size
-    }
-    // if received video size before switching to music mode, hide default album art
-    if !info.videoTracks.isEmpty {
-      miniPlayer.defaultAlbumArt.isHidden = true
-    }
-    // in case of video size changed, reset mini player window size if playlist is folded
-    if !miniPlayer.isPlaylistVisible {
-      miniPlayer.setToInitialWindowSize(display: true, animate: false)
+    if (!triggeredByPIP) {
+      // move video view
+      videoView.removeFromSuperview()
+      miniPlayer.videoWrapperView.addSubview(videoView, positioned: .below, relativeTo: nil)
+      Utility.quickConstraints(["H:|[v]|", "V:|[v]|"], ["v": videoView])
+      let (dw, dh) = videoSizeForDisplay
+      miniPlayer.updateVideoViewAspectConstraint(withAspect: CGFloat(dw) / CGFloat(dh))
+
+      // if no video track (or video info is still not available now), set aspect ratio for main window
+      if let mw = mainWindow.window, mw.aspectRatio == .zero {
+        let size = NSSize(width: dw, height: dh)
+        mw.setFrame(NSRect(origin: mw.frame.origin, size: size), display: false)
+        mw.aspectRatio = size
+      }
+      // if received video size before switching to music mode, hide default album art
+      if !info.videoTracks.isEmpty {
+        miniPlayer.defaultAlbumArt.isHidden = true
+      }
+      // in case of video size changed, reset mini player window size if playlist is folded
+      if !miniPlayer.isPlaylistVisible {
+        miniPlayer.setToInitialWindowSize(display: true, animate: false)
+      }
+      videoView.videoLayer.draw()
     }
 
     // hide main window
@@ -388,7 +398,11 @@ class PlayerCore: NSObject {
     videoView.videoLayer.draw(forced: true)
 
     // restore layout
-    if needRestoreLayout {
+    if triggeredByPIP {
+      if miniPlayer.isVideoVisible {
+        miniPlayer.toggleVideoView(self)
+      }
+    } else if needRestoreLayout {
       if !Preference.bool(for: .musicModeShowAlbumArt) {
         miniPlayer.toggleVideoView(self)
       }
@@ -396,26 +410,39 @@ class PlayerCore: NSObject {
         miniPlayer.togglePlaylist(self)
       }
     }
+
+    if triggeredByPIP, let w = mainWindow.window, let wm = miniPlayer.window {
+      wm.setFrameOrigin(w.frame.centeredResize(to: wm.frame.size).origin)
+    }
   }
 
-  func switchBackFromMiniPlayer(automatically: Bool, showMainWindow: Bool = true) {
+  /// Switch back to normal video window.
+  /// This method doesn't close the mini player. It must be closed manually if needed.
+  /// When supplying `triggeredByPIP`, `automatically` should also be `true`.
+  func switchBackFromMiniPlayer(automatically: Bool, showMainWindow: Bool = true, triggeredByPIP: Bool = false) {
     Logger.log("Switch to normal window from mini player, automatically=\(automatically)", subsystem: subsystem)
+    guard isInMiniPlayer else { return }
+    if (switchedToMiniPlayerByPIP && !triggeredByPIP) {
+      return
+    }
     if !automatically {
       switchedBackFromMiniPlayerManually = true
     }
     switchedToMiniPlayerManually = true
     mainWindow.playlistView.view.removeFromSuperview()
     mainWindow.playlistView.useCompactTabHeight = false
-    // add back video view
-    let mainWindowContentView = mainWindow.window!.contentView
-    miniPlayer.videoViewAspectConstraint?.isActive = false
-    miniPlayer.videoViewAspectConstraint = nil
-    mainWindow.videoView.removeFromSuperview()
-    mainWindowContentView?.addSubview(mainWindow.videoView, positioned: .below, relativeTo: nil)
-    ([.top, .bottom, .left, .right] as [NSLayoutConstraint.Attribute]).forEach { attr in
-      mainWindow.videoViewConstraints[attr] = NSLayoutConstraint(item: mainWindow.videoView, attribute: attr, relatedBy: .equal,
-                                                                 toItem: mainWindowContentView, attribute: attr, multiplier: 1, constant: 0)
-      mainWindow.videoViewConstraints[attr]!.isActive = true
+    if (!triggeredByPIP) {
+      // add back video view
+      let mainWindowContentView = mainWindow.window!.contentView
+      miniPlayer.videoViewAspectConstraint?.isActive = false
+      miniPlayer.videoViewAspectConstraint = nil
+      mainWindow.videoView.removeFromSuperview()
+      mainWindowContentView?.addSubview(mainWindow.videoView, positioned: .below, relativeTo: nil)
+      ([.top, .bottom, .left, .right] as [NSLayoutConstraint.Attribute]).forEach { attr in
+        mainWindow.videoViewConstraints[attr] = NSLayoutConstraint(item: mainWindow.videoView, attribute: attr, relatedBy: .equal,
+                                                                   toItem: mainWindowContentView, attribute: attr, multiplier: 1, constant: 0)
+        mainWindow.videoViewConstraints[attr]!.isActive = true
+      }
     }
     // show main window
     if showMainWindow {
@@ -1142,8 +1169,8 @@ class PlayerCore: NSObject {
    - Try match videos and subs by series and filename.
    - For unmatched videos and subs, perform fuzzy (but slow, O(n^2)) match for them.
 
-   **Remark**: 
-   
+   **Remark**:
+
    This method is expected to be executed in `backgroundQueue` (see `backgroundQueueTicket`).
    Therefore accesses to `self.info` and mpv playlist must be guarded.
    */
