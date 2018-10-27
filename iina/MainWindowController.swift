@@ -2830,8 +2830,15 @@ extension MainWindowController: PIPViewControllerDelegate {
     pipStatus = .notInPIP
 
     pipOverlayView.isHidden = true
-    window?.contentView?.addSubview(videoView, positioned: .below, relativeTo: nil)
-    videoView.frame = window?.contentView?.frame ?? .zero
+    guard let contentView = window?.contentView else { return }
+    contentView.addSubview(videoView, positioned: .below, relativeTo: nil)
+
+    ([.top, .bottom, .left, .right] as [NSLayoutConstraint.Attribute]).forEach { attr in
+      videoViewConstraints[attr]?.isActive = false
+      videoViewConstraints[attr] = NSLayoutConstraint(item: videoView, attribute: attr, relatedBy: .equal,
+                                                      toItem: contentView, attribute: attr, multiplier: 1, constant: 0)
+      videoViewConstraints[attr]!.isActive = true
+    }
 
     videoView.videoLayer.draw(forced: true)
   }
