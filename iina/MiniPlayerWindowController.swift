@@ -8,13 +8,15 @@
 
 import Cocoa
 
+fileprivate let MenuItemTagMiniPlayer = 400
+
 fileprivate typealias PK = Preference.Key
 
 fileprivate let DefaultPlaylistHeight: CGFloat = 300
 fileprivate let AutoHidePlaylistThreshold: CGFloat = 200
 fileprivate let AnimationDurationShowControl: TimeInterval = 0.2
 
-class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopoverDelegate {
+class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopoverDelegate, NSMenuItemValidation {
 
   override var windowNibName: NSNib.Name {
     return NSNib.Name("MiniPlayerWindowController")
@@ -522,6 +524,16 @@ class MiniPlayerWindowController: NSWindowController, NSWindowDelegate, NSPopove
 
 
   // MARK: - Utils
+
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    switch menuItem.tag {
+    case MenuItemTagMiniPlayer:
+      return !player.switchedToMiniPlayerByPIP
+    default:
+      break
+    }
+    return menuItem.isEnabled
+  }
 
   func setWindowFloatingOnTop(_ onTop: Bool) {
     guard let window = window else { return }
