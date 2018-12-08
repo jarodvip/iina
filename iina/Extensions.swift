@@ -208,8 +208,9 @@ extension Array {
 }
 
 extension NSMenu {
+  @discardableResult
   func addItem(withTitle string: String, action selector: Selector? = nil, target: AnyObject? = nil,
-               tag: Int? = nil, obj: Any? = nil, stateOn: Bool = false, enabled: Bool = true) {
+               tag: Int? = nil, obj: Any? = nil, stateOn: Bool = false, enabled: Bool = true) -> NSMenuItem {
     let menuItem = NSMenuItem(title: string, action: selector, keyEquivalent: "")
     menuItem.tag = tag ?? -1
     menuItem.representedObject = obj
@@ -217,6 +218,7 @@ extension NSMenu {
     menuItem.state = stateOn ? .on : .off
     menuItem.isEnabled = enabled
     self.addItem(menuItem)
+    return menuItem
   }
 }
 
